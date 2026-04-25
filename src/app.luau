@@ -9,12 +9,16 @@ type App = Types.App
 type AppOptions = Types.AppOptions
 type Handler = Types.Handler
 type Plugin = Types.Plugin
+type RouteRecord = Routing.RouteRecord
 type RouteHandlerOptions = Types.RouteHandlerOptions
 type RouteOptions = Types.RouteOptions
 
 type AppState = {
 	_options: AppOptions,
 	_compiled: boolean,
+	_routes: { RouteRecord },
+	_routePaths: { [string]: true },
+	_routePatterns: { [string]: string },
 }
 
 local AppMethods = {}
@@ -121,6 +125,9 @@ local function new(options: AppOptions?): App
 	local app: AppInternal = setmetatable({
 		_options = validateOptions(options),
 		_compiled = false,
+		_routes = {},
+		_routePaths = {},
+		_routePatterns = {},
 	}, AppMethods)
 
 	return (app :: unknown) :: App
