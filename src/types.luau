@@ -58,6 +58,8 @@ export type HandlerResult = Response | string | boolean | number | { [string]: u
 
 export type Handler = (request: Request, reply: Reply) -> HandlerResult
 
+export type ErrorHandler = (request: Request, reply: Reply, err: unknown) -> HandlerResult
+
 export type RouteHandlerOptions = {
 	schema: RouteSchema?,
 	config: { [string]: unknown }?,
@@ -88,7 +90,7 @@ export type App = {
 	plugin: (self: App, plugin: Plugin, options: { [string]: unknown }?) -> App,
 	decorate: (self: App, name: string, value: unknown) -> App,
 	setNotFoundHandler: (self: App, handler: Handler) -> App,
-	setErrorHandler: (self: App, handler: Handler) -> App,
+	setErrorHandler: (self: App, handler: ErrorHandler) -> App,
 	compile: (self: App) -> App,
 	listen: (self: App, options: { [string]: unknown }) -> App,
 	printRoutes: (self: App) -> string,

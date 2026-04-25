@@ -10,6 +10,7 @@ type ReplyState = {
 	sent: boolean,
 	_headers: { [string]: string },
 	_statusSet: boolean,
+	_response: Response?,
 }
 
 type ReplyInternal = Reply & ReplyState
@@ -74,6 +75,7 @@ end
 
 local function markSent(self: ReplyInternal, response: Response): Response
 	self.sent = true
+	self._response = response
 	return response
 end
 
@@ -188,9 +190,14 @@ function ReplyModule.create(): Reply
 		sent = false,
 		_headers = {},
 		_statusSet = false,
+		_response = nil :: Response?,
 	}, ReplyMethods) :: any
 
 	return reply
+end
+
+function ReplyModule.sentResponse(reply: Reply): Response?
+	return ((reply :: unknown) :: ReplyInternal)._response
 end
 
 return ReplyModule

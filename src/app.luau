@@ -7,6 +7,7 @@ local Types = require("./types")
 
 type App = Types.App
 type AppOptions = Types.AppOptions
+type ErrorHandler = Types.ErrorHandler
 type Handler = Types.Handler
 type Plugin = Types.Plugin
 type CompiledRouter = Routing.CompiledRouter
@@ -21,6 +22,8 @@ type AppState = {
 	_routePaths: { [string]: true },
 	_routePatterns: { [string]: string },
 	_compiledRouter: CompiledRouter?,
+	_notFoundHandler: Handler?,
+	_errorHandler: ErrorHandler?,
 }
 
 local AppMethods = {}
@@ -76,12 +79,24 @@ function AppMethods:decorate(name: string, value: unknown): App
 	return Plugins.decorate((self :: unknown) :: App, name, value)
 end
 
-function AppMethods:setNotFoundHandler(_handler: Handler): App
-	return Errors.notImplemented("custom not found handlers", "Task 7")
+function AppMethods:setNotFoundHandler(handler: Handler): App
+	if type(handler) ~= "function" then
+		Errors.raise("not found handler must be a function")
+	end
+
+	self._notFoundHandler = handler
+
+	return (self :: unknown) :: App
 end
 
-function AppMethods:setErrorHandler(_handler: Handler): App
-	return Errors.notImplemented("custom error handlers", "Task 7")
+function AppMethods:setErrorHandler(handler: ErrorHandler): App
+	if type(handler) ~= "function" then
+		Errors.raise("error handler must be a function")
+	end
+
+	self._errorHandler = handler
+
+	return (self :: unknown) :: App
 end
 
 function AppMethods:compile(): App
@@ -131,6 +146,8 @@ local function new(options: AppOptions?): App
 		_routePaths = {},
 		_routePatterns = {},
 		_compiledRouter = nil :: CompiledRouter?,
+		_notFoundHandler = nil :: Handler?,
+		_errorHandler = nil :: ErrorHandler?,
 	}, AppMethods)
 
 	return (app :: unknown) :: App
