@@ -9,6 +9,7 @@ type App = Types.App
 type AppOptions = Types.AppOptions
 type Handler = Types.Handler
 type Plugin = Types.Plugin
+type CompiledRouter = Routing.CompiledRouter
 type RouteRecord = Routing.RouteRecord
 type RouteHandlerOptions = Types.RouteHandlerOptions
 type RouteOptions = Types.RouteOptions
@@ -19,6 +20,7 @@ type AppState = {
 	_routes: { RouteRecord },
 	_routePaths: { [string]: true },
 	_routePatterns: { [string]: string },
+	_compiledRouter: CompiledRouter?,
 }
 
 local AppMethods = {}
@@ -128,6 +130,7 @@ local function new(options: AppOptions?): App
 		_routes = {},
 		_routePaths = {},
 		_routePatterns = {},
+		_compiledRouter = nil :: CompiledRouter?,
 	}, AppMethods)
 
 	return (app :: unknown) :: App
