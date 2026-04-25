@@ -1,0 +1,6 @@
+Packages/
+node_modules/
+loom.lock.luau
+.DS_Store
+.vscode/
+.int/

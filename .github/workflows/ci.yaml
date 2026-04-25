@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Luumen
+        run: curl -fsSL https://luumen.dev/install.sh | bash
+
+      - name: Install Rokit
+        run: curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+
+      - name: Add tools to PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+
+      - name: Install project dependencies
+        run: luu install
+
+      - name: Run CI task
+        run: luu run ci

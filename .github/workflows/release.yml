@@ -1,0 +1,229 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Derive publish metadata
+        id: meta
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.payload.inputs.tag;
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
+              core.setFailed(`Release tag must look like vX.Y.Z, got ${tag}`);
+              return;
+            }
+
+            core.setOutput("tag", tag);
+            core.setOutput("version", tag.slice(1));
+            core.setOutput("default_branch", context.payload.repository.default_branch);
+
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.meta.outputs.default_branch }}
+
+      - name: Sync versioned files
+        shell: bash
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          tag = os.environ["TAG"]
+
+          manifest_path = pathlib.Path("loom.config.luau")
+          manifest = manifest_path.read_text()
+          manifest_updated, manifest_count = re.subn(
+              r'version = "[^"]+"',
+              f'version = "{version}"',
+              manifest,
+              count=1,
+          )
+          if manifest_count != 1:
+              raise SystemExit("Could not find package.version in loom.config.luau")
+          manifest_path.write_text(manifest_updated)
+
+          readme_path = pathlib.Path("README.md")
+          readme = readme_path.read_text()
+          readme_updated, readme_count = re.subn(
+              r'rev = "v[^"]+"',
+              f'rev = "{tag}"',
+              readme,
+              count=1,
+          )
+          if readme_count != 1:
+              raise SystemExit('Could not find README install example rev = "v..."')
+          readme_path.write_text(readme_updated)
+          PY
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+
+      - name: Commit and push release prep
+        id: commit
+        shell: bash
+        run: |
+          if git diff --quiet -- loom.config.luau README.md; then
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add loom.config.luau README.md
+          git commit -m "release: prepare ${{ steps.meta.outputs.tag }}"
+          git push origin HEAD:${{ steps.meta.outputs.default_branch }}
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag does not already exist
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag ${{ steps.meta.outputs.tag }} already exists on origin" >&2
+            exit 1
+          fi
+
+      - name: Find previous tag
+        id: previous
+        shell: bash
+        run: |
+          PREVIOUS_TAG="$(git tag --sort=-v:refname | head -n 1)"
+          echo "tag=${PREVIOUS_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          git tag "${{ steps.meta.outputs.tag }}" "${{ steps.commit.outputs.sha }}"
+          git push origin "${{ steps.meta.outputs.tag }}"
+
+      - name: Build release notes
+        id: notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentTag = "${{ steps.meta.outputs.tag }}";
+            const previousTag = "${{ steps.previous.outputs.tag }}".trim();
+            const head = "${{ steps.commit.outputs.sha }}";
+
+            let commits = [];
+            let compareUrl = `https://github.com/${owner}/${repo}/commits/${currentTag}`;
+
+            if (previousTag.length > 0) {
+              const comparison = await github.rest.repos.compareCommits({
+                owner,
+                repo,
+                base: previousTag,
+                head: currentTag,
+              });
+
+              commits = comparison.data.commits || [];
+              compareUrl = comparison.data.html_url || `https://github.com/${owner}/${repo}/compare/${previousTag}...${currentTag}`;
+            } else {
+              commits = await github.paginate(github.rest.repos.listCommits, {
+                owner,
+                repo,
+                sha: head,
+                per_page: 100,
+              });
+            }
+
+            commits = commits.filter((commit) => {
+              const message = (commit.commit?.message || "").split("\n")[0];
+              return message !== `release: prepare ${currentTag}`;
+            });
+
+            const pullRequestsByNumber = new Map();
+
+            for (const commit of commits) {
+              const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: commit.sha,
+              });
+
+              for (const pr of response.data) {
+                if (!pullRequestsByNumber.has(pr.number)) {
+                  pullRequestsByNumber.set(pr.number, pr);
+                }
+              }
+            }
+
+            const lines = [];
+
+            if (previousTag.length > 0) {
+              lines.push(`## Changes Since ${previousTag}`);
+            } else {
+              lines.push("## Initial Release");
+            }
+
+            if (pullRequestsByNumber.size > 0) {
+              lines.push("");
+              lines.push("### Pull Requests");
+
+              for (const pr of Array.from(pullRequestsByNumber.values()).sort((a, b) => a.number - b.number)) {
+                const author = pr.user ? ` (@${pr.user.login})` : "";
+                lines.push(`- #${pr.number} ${pr.title}${author}`);
+              }
+            }
+
+            if (commits.length > 0) {
+              lines.push("");
+              lines.push("### Commits");
+
+              for (const commit of commits) {
+                const message = (commit.commit.message || "").split("\n")[0];
+                const shortSha = commit.sha.slice(0, 7);
+                const author = commit.author?.login
+                  ?? commit.commit.author?.name
+                  ?? "unknown";
+                const authorLabel = author.startsWith("@") ? author : `@${author}`;
+                lines.push(`- ${shortSha} ${message} (${authorLabel})`);
+              }
+            }
+
+            lines.push("");
+            if (previousTag.length > 0) {
+              lines.push(`Full Changelog: ${previousTag}...${currentTag}`);
+              lines.push(compareUrl);
+            } else {
+              lines.push(`Source: https://github.com/${owner}/${repo}/tree/${currentTag}`);
+            }
+
+            core.setOutput("body", lines.join("\n"));
+
+      - name: Create GitHub release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+        with:
+          script: |
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: "${{ steps.meta.outputs.tag }}",
+              name: "${{ steps.meta.outputs.tag }}",
+              target_commitish: "${{ steps.commit.outputs.sha }}",
+              body: process.env.RELEASE_BODY,
+            });
