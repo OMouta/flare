@@ -5,6 +5,12 @@ export type AppOptions = {
 	bodyLimit: number?,
 }
 
+export type ListenOptions = {
+	hostname: string?,
+	port: number?,
+	reuseport: boolean?,
+}
+
 export type Validator<T> = {
 	parse: (self: Validator<T>, input: unknown) -> T,
 }
@@ -94,7 +100,7 @@ export type App = {
 	setNotFoundHandler: (self: App, handler: Handler) -> App,
 	setErrorHandler: (self: App, handler: ErrorHandler) -> App,
 	compile: (self: App) -> App,
-	listen: (self: App, options: { [string]: unknown }) -> App,
+	listen: (self: App, options: ListenOptions) -> unknown,
 	printRoutes: (self: App) -> string,
 }
 

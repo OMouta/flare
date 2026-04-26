@@ -1,5 +1,6 @@
 local Errors = require("./errors")
 local Hooks = require("./hooks")
+local Listen = require("./listen")
 local Plugins = require("./plugins")
 local RoutePrinter = require("./route_printer")
 local Routing = require("./routing")
@@ -11,6 +12,7 @@ type ErrorHandler = Types.ErrorHandler
 type Handler = Types.Handler
 type HookChains = Hooks.HookChains
 type HookHandler = Types.HookHandler
+type ListenOptions = Types.ListenOptions
 type Plugin = Types.Plugin
 type CompiledRouter = Routing.CompiledRouter
 type RouteRecord = Routing.RouteRecord
@@ -33,6 +35,7 @@ type AppState = {
 	_isScoped: boolean,
 	_decorations: { [string]: unknown },
 	_parentScope: any?,
+	_server: unknown?,
 }
 
 local AppMethods = {}
@@ -136,6 +139,7 @@ function AppMethods:group(prefix: string, callback: (scope: App) -> ()): App
 		_isScoped = true,
 		_decorations = {},
 		_parentScope = self,
+		_server = self._server,
 	}, AppMethods) :: any
 
 	callback((group :: unknown) :: App)
@@ -175,8 +179,8 @@ function AppMethods:compile(): App
 	return Routing.compile((self :: unknown) :: App)
 end
 
-function AppMethods:listen(_options: { [string]: unknown }): App
-	return Errors.notImplemented("Lute listen integration", "Task 11")
+function AppMethods:listen(options: ListenOptions): unknown
+	return Listen.listen((self :: unknown) :: App, options)
 end
 
 function AppMethods:printRoutes(): string
@@ -226,7 +230,8 @@ local function new(options: AppOptions?): App
 		_prefix = "",
 		_isScoped = false,
 		_decorations = {},
-		_parentScope = nil,
+		_parentScope = nil :: any?,
+		_server = nil :: unknown?,
 	}, AppMethods)
 
 	return (app :: unknown) :: App

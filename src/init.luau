@@ -3,6 +3,7 @@ local Response = require("@self/response")
 local Types = require("@self/types")
 
 export type AppOptions = Types.AppOptions
+export type ListenOptions = Types.ListenOptions
 export type App = Types.App
 export type RouteOptions = Types.RouteOptions
 export type Handler = Types.Handler
