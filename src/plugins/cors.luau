@@ -1,7 +1,6 @@
 local Types = require("../types")
 
 type App = Types.App
-type Reply = Types.Reply
 type Request = Types.Request
 type Response = Types.Response
 
@@ -135,7 +134,8 @@ local function setCorsHeaders(
 	end
 
 	if type(config.origin) == "table" then
-		headers.vary = if headers.vary == nil then "Origin" else headers.vary .. ", Origin"
+		local vary = headers.vary
+		headers.vary = if vary == nil then "Origin" else vary .. ", Origin"
 	end
 
 	if config.credentials then
@@ -185,9 +185,12 @@ function Cors.plugin(app: App, options: { [string]: unknown }?): ()
 	local config = validateOptions(options)
 	local target = hookTarget(app)
 
-	target:options("/*", function(request: Request, reply: Reply)
-		local response = reply:empty(204)
-		return withCorsHeaders(config, request, response, true)
+	target:options("/*", function(request: Request)
+		return withCorsHeaders(config, request, {
+			status = 204,
+			headers = {},
+			body = nil,
+		}, true)
 	end)
 
 	target:hook("onSend", function(request: Request, _reply, value: unknown?)
