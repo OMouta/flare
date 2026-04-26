@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Flare Chat</title>
+		<link rel="icon" href="/icon.svg" type="image/svg+xml">
+		<link rel="stylesheet" href="/style.css">
+	</head>
+	<body>
+		<main class="app">
+			<section class="login" id="login">
+				<img class="icon" src="/icon.svg" alt="">
+				<h1>Flare Chat</h1>
+				<form id="login-form">
+					<input id="username" name="username" autocomplete="nickname" placeholder="Username" maxlength="32" required>
+					<button type="submit">Join</button>
+				</form>
+			</section>
+
+			<section class="chat hidden" id="chat">
+				<header>
+					<div>
+						<strong>Global Chat</strong>
+						<span id="active-user"></span>
+					</div>
+					<button id="logout" type="button">Leave</button>
+				</header>
+
+				<div class="messages" id="messages"></div>
+
+				<form class="composer" id="message-form">
+					<input id="message" name="message" autocomplete="off" placeholder="Message" maxlength="500" required>
+					<button type="submit">Send</button>
+				</form>
+			</section>
+		</main>
+
+		<script src="/app.js"></script>
+	</body>
+</html>
