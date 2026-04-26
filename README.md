@@ -1,4 +1,4 @@
-# Flare
+# Flare [![CI](https://github.com/OMouta/flare/actions/workflows/ci.yaml/badge.svg)](https://github.com/OMouta/flare/actions/workflows/ci.yaml)
 
 A fast, plugin-first HTTP framework for Lute.
 
