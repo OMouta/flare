@@ -11,11 +11,12 @@ return {
     },
 
     tasks = {
-        ["lint"] = "lute lint src tests examples benchmarks",
+        ["lint"] = "lute lint src tests examples bench",
         ["test"] = "lute test",
-        ["format"] = "stylua src tests examples benchmarks",
-        ["format:check"] = "stylua --check src tests examples benchmarks",
-        ["typecheck"] = "lute check src tests examples benchmarks",
+        ["format"] = "stylua src tests examples bench",
+        ["format:check"] = "stylua --check src tests examples bench",
+        ["typecheck"] = "lute check src tests examples bench",
+        ["bench"] = "lute bench/init.luau",
         ["ci"] = {"luu run format:check", "luu lint", "luu run typecheck", "luu test"},
         ["types"] = "lute setup"
     },
