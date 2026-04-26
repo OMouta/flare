@@ -18,7 +18,9 @@ export type HookChains = {
 
 type HookedApp = App & {
 	_compiled: boolean,
+	_isScoped: boolean,
 	_hooks: HookChains,
+	_scopeHooks: HookChains,
 	_compiledHooks: HookChains?,
 }
 
@@ -46,16 +48,30 @@ function Hooks.emptyChains(): HookChains
 	}
 end
 
-local function copyHookList(source: { HookHandler }): { HookHandler }
+local function copyHookList(source: { HookHandler }, freeze: boolean): { HookHandler }
 	local target: { HookHandler } = {}
 
 	for _, handler in source do
 		table.insert(target, handler)
 	end
 
-	table.freeze(target)
+	if freeze then
+		table.freeze(target)
+	end
 
 	return target
+end
+
+function Hooks.copyChains(chains: HookChains): HookChains
+	return {
+		onRequest = copyHookList(chains.onRequest, false),
+		preParsing = copyHookList(chains.preParsing, false),
+		preValidation = copyHookList(chains.preValidation, false),
+		preHandler = copyHookList(chains.preHandler, false),
+		onSend = copyHookList(chains.onSend, false),
+		onError = copyHookList(chains.onError, false),
+		onResponse = copyHookList(chains.onResponse, false),
+	}
 end
 
 local function hookList(chains: HookChains, name: HookName): { HookHandler }
@@ -78,13 +94,13 @@ end
 
 function Hooks.compile(chains: HookChains): HookChains
 	return table.freeze({
-		onRequest = copyHookList(chains.onRequest),
-		preParsing = copyHookList(chains.preParsing),
-		preValidation = copyHookList(chains.preValidation),
-		preHandler = copyHookList(chains.preHandler),
-		onSend = copyHookList(chains.onSend),
-		onError = copyHookList(chains.onError),
-		onResponse = copyHookList(chains.onResponse),
+		onRequest = copyHookList(chains.onRequest, true),
+		preParsing = copyHookList(chains.preParsing, true),
+		preValidation = copyHookList(chains.preValidation, true),
+		preHandler = copyHookList(chains.preHandler, true),
+		onSend = copyHookList(chains.onSend, true),
+		onError = copyHookList(chains.onError, true),
+		onResponse = copyHookList(chains.onResponse, true),
 	}) :: HookChains
 end
 
@@ -103,7 +119,11 @@ function Hooks.register(app: App, name: string, handler: HookHandler): App
 		Errors.raise("hook handler must be a function")
 	end
 
-	table.insert(hookList(state._hooks, name :: HookName), handler)
+	if state._isScoped then
+		table.insert(hookList(state._scopeHooks, name :: HookName), handler)
+	else
+		table.insert(hookList(state._hooks, name :: HookName), handler)
+	end
 
 	return app
 end

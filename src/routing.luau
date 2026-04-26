@@ -12,13 +12,13 @@ type RouteSchema = Types.RouteSchema
 type ParsedPattern = RoutePattern.ParsedPattern
 
 export type RouteHooks = {
-	onRequest: { unknown },
-	preParsing: { unknown },
-	preValidation: { unknown },
-	preHandler: { unknown },
-	onSend: { unknown },
-	onError: { unknown },
-	onResponse: { unknown },
+	onRequest: { Types.HookHandler },
+	preParsing: { Types.HookHandler },
+	preValidation: { Types.HookHandler },
+	preHandler: { Types.HookHandler },
+	onSend: { Types.HookHandler },
+	onError: { Types.HookHandler },
+	onResponse: { Types.HookHandler },
 }
 
 export type RouteRecord = {
@@ -60,7 +60,9 @@ type AppRoutingState = App & {
 	_routePatterns: { [string]: string },
 	_compiledRouter: CompiledRouter?,
 	_hooks: HookChains,
+	_scopeHooks: HookChains,
 	_compiledHooks: HookChains?,
+	_prefix: string,
 }
 
 local Routing = {}
@@ -75,18 +77,6 @@ local SUPPORTED_METHODS: { [string]: true } = {
 	PUT = true,
 }
 
-local function emptyHooks(): RouteHooks
-	return {
-		onRequest = {},
-		preParsing = {},
-		preValidation = {},
-		preHandler = {},
-		onSend = {},
-		onError = {},
-		onResponse = {},
-	}
-end
-
 local function normalizeMethod(method: string): string
 	if type(method) ~= "string" then
 		Errors.raise("route method must be a string")
@@ -98,6 +88,18 @@ local function normalizeMethod(method: string): string
 	end
 
 	return normalized
+end
+
+local function joinPaths(prefix: string, path: string): string
+	if prefix == "" or prefix == "/" then
+		return path
+	end
+
+	if path == "" or path == "/" then
+		return prefix
+	end
+
+	return prefix .. path
 end
 
 local function assertPath(path: string): string
@@ -293,7 +295,7 @@ function Routing.route(app: App, options: RouteOptions): App
 	end
 
 	local method = normalizeMethod(options.method)
-	local parsedPattern = RoutePattern.parse(assertPath(options.path))
+	local parsedPattern = RoutePattern.parse(joinPaths(state._prefix, assertPath(options.path)))
 	local handler = assertHandler(options.handler)
 	local pathKey = routePathKey(method, parsedPattern.path)
 	local patternKey = routePatternKey(method, parsedPattern)
@@ -316,7 +318,7 @@ function Routing.route(app: App, options: RouteOptions): App
 		handler = handler,
 		schema = options.schema,
 		config = options.config,
-		hooks = emptyHooks(),
+		hooks = Hooks.copyChains(state._scopeHooks),
 	}
 
 	table.insert(state._routes, record)

@@ -27,7 +27,10 @@ type AppState = {
 	_notFoundHandler: Handler?,
 	_errorHandler: ErrorHandler?,
 	_hooks: HookChains,
+	_scopeHooks: HookChains,
 	_compiledHooks: HookChains?,
+	_prefix: string,
+	_isScoped: boolean,
 }
 
 local AppMethods = {}
@@ -71,8 +74,54 @@ function AppMethods:hook(name: string, handler: HookHandler): App
 	return Hooks.register((self :: unknown) :: App, name, handler)
 end
 
-function AppMethods:group(_prefix: string, _callback: (scope: App) -> ()): App
-	return Errors.notImplemented("route groups", "Task 9")
+local function joinGroupPrefix(parentPrefix: string, prefix: string): string
+	if type(prefix) ~= "string" then
+		Errors.raise("group prefix must be a string")
+	end
+
+	if prefix == "" or prefix == "/" then
+		return if parentPrefix == "" then "/" else parentPrefix
+	end
+
+	if string.sub(prefix, 1, 1) ~= "/" then
+		Errors.raise("group prefix must start with '/'")
+	end
+
+	if parentPrefix == "" or parentPrefix == "/" then
+		return prefix
+	end
+
+	return parentPrefix .. prefix
+end
+
+function AppMethods:group(prefix: string, callback: (scope: App) -> ()): App
+	if self._compiled then
+		Errors.raise("groups cannot be registered after compilation")
+	end
+
+	if type(callback) ~= "function" then
+		Errors.raise("group callback must be a function")
+	end
+
+	local group: AppInternal = setmetatable({
+		_options = self._options,
+		_compiled = self._compiled,
+		_routes = self._routes,
+		_routePaths = self._routePaths,
+		_routePatterns = self._routePatterns,
+		_compiledRouter = self._compiledRouter,
+		_notFoundHandler = self._notFoundHandler,
+		_errorHandler = self._errorHandler,
+		_hooks = self._hooks,
+		_scopeHooks = Hooks.copyChains(self._scopeHooks),
+		_compiledHooks = self._compiledHooks,
+		_prefix = joinGroupPrefix(self._prefix, prefix),
+		_isScoped = true,
+	}, AppMethods)
+
+	callback((group :: unknown) :: App)
+
+	return (self :: unknown) :: App
 end
 
 function AppMethods:plugin(plugin: Plugin, options: { [string]: unknown }?): App
@@ -153,7 +202,10 @@ local function new(options: AppOptions?): App
 		_notFoundHandler = nil :: Handler?,
 		_errorHandler = nil :: ErrorHandler?,
 		_hooks = Hooks.emptyChains(),
+		_scopeHooks = Hooks.emptyChains(),
 		_compiledHooks = nil :: HookChains?,
+		_prefix = "",
+		_isScoped = false,
 	}, AppMethods)
 
 	return (app :: unknown) :: App

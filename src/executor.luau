@@ -197,14 +197,35 @@ local function finalizeResponse(
 	return finalResponse
 end
 
+local function appendHooks(target: { HookHandler }, source: { HookHandler }): { HookHandler }
+	for _, hook in source do
+		table.insert(target, hook)
+	end
+
+	return target
+end
+
+local function combineHooks(global: HookChains, routeHooks): HookChains
+	return {
+		onRequest = appendHooks(appendHooks({}, global.onRequest), routeHooks.onRequest),
+		preParsing = appendHooks(appendHooks({}, global.preParsing), routeHooks.preParsing),
+		preValidation = appendHooks(appendHooks({}, global.preValidation), routeHooks.preValidation),
+		preHandler = appendHooks(appendHooks({}, global.preHandler), routeHooks.preHandler),
+		onSend = appendHooks(appendHooks({}, global.onSend), routeHooks.onSend),
+		onError = appendHooks(appendHooks({}, global.onError), routeHooks.onError),
+		onResponse = appendHooks(appendHooks({}, global.onResponse), routeHooks.onResponse),
+	}
+end
+
 function Executor.execute(app: App, source: RequestSource): Response
 	local state = (app :: unknown) :: ExecutableApp
 	Routing.compile(app)
 
-	local hooks = state._compiledHooks :: HookChains
+	local globalHooks = state._compiledHooks :: HookChains
 	local request = Request.create(source, state._options)
 	local reply = Reply.create()
 	local match = Routing.match(app, request.method, request.path)
+	local hooks = if match.kind == "found" then combineHooks(globalHooks, match.route.hooks) else globalHooks
 
 	local preHookGroups = {
 		hooks.onRequest,
