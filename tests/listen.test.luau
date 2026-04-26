@@ -11,7 +11,7 @@ test.suite("listen integration", function(suite)
 		app:get("/health", function(request)
 			return {
 				ok = request.query.ok,
-			} :: { [string]: unknown }
+			}
 		end)
 
 		local handler = Listen.createHandler(app)
@@ -55,7 +55,7 @@ test.suite("listen integration", function(suite)
 		app:get("/health", function()
 			return {
 				ok = true,
-			} :: { [string]: unknown }
+			}
 		end)
 
 		local server = Listen.listenWithServer(app, {

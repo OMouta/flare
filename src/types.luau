@@ -60,7 +60,7 @@ export type Reply = {
 	empty: (self: Reply, status: number?) -> Response,
 }
 
-export type HandlerResult = Response | string | boolean | number | { [string]: unknown } | nil
+export type HandlerResult = Response | string | boolean | number | {} | nil
 
 export type Handler = (request: Request, reply: Reply) -> HandlerResult
 
