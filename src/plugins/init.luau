@@ -80,7 +80,7 @@ function Plugins.register(app: App, plugin: Plugin, options: { [string]: unknown
 		_isScoped = true,
 		_decorations = {},
 		_parentScope = state,
-	}, getmetatable(app)) :: any
+	}, getmetatable(app :: any)) :: any
 
 	local ok, err = pcall(plugin, (scope :: unknown) :: App, options)
 	if not ok then
