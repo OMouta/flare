@@ -34,6 +34,49 @@ test.suite("listen integration", function(suite)
 		assert.eq(response.body, '{ "ok": "true"}')
 	end)
 
+	suite:case("serves plugin scoped hooks and routes through the listen handler", function()
+		local app = flare.new()
+
+		app:plugin(function(api)
+			api:hook("preHandler", function(request)
+				request.state.requestId = "req_example"
+				return nil
+			end)
+
+			api:hook("onSend", function(request, _reply, response)
+				local current = response :: {
+					status: number,
+					headers: { [string]: string },
+					body: string?,
+				}
+				current.headers["x-request-id"] = tostring(request.state.requestId)
+				return current
+			end)
+
+			api:get("/", function(request)
+				return {
+					requestId = tostring(request.state.requestId),
+				}
+			end)
+		end)
+
+		local handler = Listen.createHandler(app)
+		local response = handler({
+			method = "GET",
+			path = "/",
+			body = "",
+			query = {},
+			headers = {},
+		}, {})
+
+		assert.eq(response.status, 200)
+		assert.eq(response.headers :: any, {
+			["content-type"] = "application/json",
+			["x-request-id"] = "req_example",
+		})
+		assert.eq(response.body, '{ "requestId": "req_example"}')
+	end)
+
 	suite:case("listen compiles once before serving and stores the server handle", function()
 		local app = flare.new()
 		local servedConfig = nil :: any
