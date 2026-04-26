@@ -31,10 +31,27 @@ type AppState = {
 	_compiledHooks: HookChains?,
 	_prefix: string,
 	_isScoped: boolean,
+	_decorations: { [string]: unknown },
+	_parentScope: any?,
 }
 
 local AppMethods = {}
-AppMethods.__index = AppMethods
+AppMethods.__index = function(self: any, key: any): any
+	local method = AppMethods[key]
+	if method ~= nil then
+		return method
+	end
+
+	if type(key) == "string" then
+		if string.sub(key, 1, 1) == "_" then
+			return nil
+		end
+
+		return Plugins.lookup((self :: unknown) :: App, key)
+	end
+
+	return nil
+end
 
 type AppInternal = typeof(setmetatable({} :: AppState, AppMethods))
 
@@ -117,7 +134,9 @@ function AppMethods:group(prefix: string, callback: (scope: App) -> ()): App
 		_compiledHooks = self._compiledHooks,
 		_prefix = joinGroupPrefix(self._prefix, prefix),
 		_isScoped = true,
-	}, AppMethods)
+		_decorations = {},
+		_parentScope = self,
+	}, AppMethods) :: any
 
 	callback((group :: unknown) :: App)
 
@@ -206,6 +225,8 @@ local function new(options: AppOptions?): App
 		_compiledHooks = nil :: HookChains?,
 		_prefix = "",
 		_isScoped = false,
+		_decorations = {},
+		_parentScope = nil,
 	}, AppMethods)
 
 	return (app :: unknown) :: App
