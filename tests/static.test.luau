@@ -67,7 +67,7 @@ test.suite("static plugin", function(suite)
 		assert.eq(response.status, 200)
 		assert.eq(response.headers["content-type"], "application/json")
 		assert.eq(response.headers["cache-control"], "public, max-age=60")
-		assert.eq(response.body, '{ "ok": true}\n')
+		assert.eq(response.body, '{ "ok": true }\n')
 	end)
 
 	suite:case("returns 404 for missing files", function()
