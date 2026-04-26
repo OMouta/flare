@@ -1,9 +1,11 @@
 local Errors = require("./errors")
+local Hooks = require("./hooks")
 local RoutePattern = require("./route_pattern")
 local Types = require("./types")
 
 type App = Types.App
 type Handler = Types.Handler
+type HookChains = Hooks.HookChains
 type RouteHandlerOptions = Types.RouteHandlerOptions
 type RouteOptions = Types.RouteOptions
 type RouteSchema = Types.RouteSchema
@@ -57,6 +59,8 @@ type AppRoutingState = App & {
 	_routePaths: { [string]: true },
 	_routePatterns: { [string]: string },
 	_compiledRouter: CompiledRouter?,
+	_hooks: HookChains,
+	_compiledHooks: HookChains?,
 }
 
 local Routing = {}
@@ -376,6 +380,7 @@ function Routing.compile(app: App): App
 	table.freeze(router)
 
 	state._compiledRouter = (router :: unknown) :: CompiledRouter?
+	state._compiledHooks = Hooks.compile(state._hooks)
 	state._compiled = true
 
 	return app

@@ -9,6 +9,8 @@ type App = Types.App
 type AppOptions = Types.AppOptions
 type ErrorHandler = Types.ErrorHandler
 type Handler = Types.Handler
+type HookChains = Hooks.HookChains
+type HookHandler = Types.HookHandler
 type Plugin = Types.Plugin
 type CompiledRouter = Routing.CompiledRouter
 type RouteRecord = Routing.RouteRecord
@@ -24,6 +26,8 @@ type AppState = {
 	_compiledRouter: CompiledRouter?,
 	_notFoundHandler: Handler?,
 	_errorHandler: ErrorHandler?,
+	_hooks: HookChains,
+	_compiledHooks: HookChains?,
 }
 
 local AppMethods = {}
@@ -63,7 +67,7 @@ function AppMethods:options(path: string, handler: Handler | RouteHandlerOptions
 	return Routing.method((self :: unknown) :: App, "OPTIONS", path, handler)
 end
 
-function AppMethods:hook(name: string, handler: Handler): App
+function AppMethods:hook(name: string, handler: HookHandler): App
 	return Hooks.register((self :: unknown) :: App, name, handler)
 end
 
@@ -148,6 +152,8 @@ local function new(options: AppOptions?): App
 		_compiledRouter = nil :: CompiledRouter?,
 		_notFoundHandler = nil :: Handler?,
 		_errorHandler = nil :: ErrorHandler?,
+		_hooks = Hooks.emptyChains(),
+		_compiledHooks = nil :: HookChains?,
 	}, AppMethods)
 
 	return (app :: unknown) :: App

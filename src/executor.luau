@@ -1,6 +1,7 @@
 local Request = require("./request")
 local Reply = require("./reply")
 local Routing = require("./routing")
+local Hooks = require("./hooks")
 local Types = require("./types")
 
 type App = Types.App
@@ -8,6 +9,8 @@ type AppOptions = Types.AppOptions
 type ErrorHandler = Types.ErrorHandler
 type Handler = Types.Handler
 type HandlerResult = Types.HandlerResult
+type HookChains = Hooks.HookChains
+type HookHandler = Types.HookHandler
 type ReplyType = Types.Reply
 type RequestType = Types.Request
 type Response = Types.Response
@@ -17,6 +20,7 @@ type ExecutableApp = App & {
 	_options: AppOptions,
 	_notFoundHandler: Handler?,
 	_errorHandler: ErrorHandler?,
+	_compiledHooks: HookChains?,
 }
 
 local Executor = {}
@@ -44,6 +48,14 @@ local function responseFromResult(reply: ReplyType, result: HandlerResult): Resp
 	return reply:send(result)
 end
 
+local function maybeResponseFromHookResult(reply: ReplyType, result: HandlerResult): Response?
+	if result == nil and not reply.sent then
+		return nil
+	end
+
+	return responseFromResult(reply, result)
+end
+
 local function runHandler(handler: Handler, request: RequestType, reply: ReplyType): (boolean, Response | unknown)
 	local ok, result = pcall(handler, request, reply)
 	if not ok then
@@ -56,6 +68,69 @@ local function runHandler(handler: Handler, request: RequestType, reply: ReplyTy
 	end
 
 	return true, response
+end
+
+local function runHook(
+	hook: HookHandler,
+	request: RequestType,
+	reply: ReplyType,
+	value: unknown?
+): (boolean, Response? | unknown)
+	local ok, result = pcall(hook, request, reply, value)
+	if not ok then
+		return false, result
+	end
+
+	local normalizedOk, response = pcall(maybeResponseFromHookResult, reply, result)
+	if not normalizedOk then
+		return false, response
+	end
+
+	return true, response
+end
+
+local function runShortCircuitHooks(
+	hooks: { HookHandler },
+	request: RequestType,
+	reply: ReplyType
+): (boolean, Response? | unknown)
+	for _, hook in hooks do
+		local ok, responseOrError = runHook(hook, request, reply, nil)
+		if not ok or responseOrError ~= nil then
+			return ok, responseOrError
+		end
+	end
+
+	return true, nil
+end
+
+local function runOnSendHooks(
+	hooks: { HookHandler },
+	request: RequestType,
+	response: Response
+): (boolean, Response | unknown)
+	local current = response
+
+	for _, hook in hooks do
+		local reply = Reply.create()
+		local ok, responseOrError = runHook(hook, request, reply, current)
+		if not ok then
+			return false, responseOrError
+		end
+
+		if responseOrError ~= nil then
+			current = responseOrError :: Response
+		end
+	end
+
+	return true, current
+end
+
+local function runOnResponseHooks(hooks: { HookHandler }, request: RequestType, response: Response): ()
+	for _, hook in hooks do
+		local reply = Reply.create()
+		pcall(hook, request, reply, response)
+	end
 end
 
 local function runErrorHandler(handler: ErrorHandler, request: RequestType, reply: ReplyType, err: unknown): Response
@@ -71,31 +146,101 @@ local function runErrorHandler(handler: ErrorHandler, request: RequestType, repl
 	return defaultErrorHandler(request, fallbackReply, err) :: Response
 end
 
+local function applyOnErrorHooks(
+	hooks: { HookHandler },
+	request: RequestType,
+	err: unknown,
+	response: Response
+): Response
+	local current = response
+
+	for _, hook in hooks do
+		local reply = Reply.create()
+		local ok, responseOrError = runHook(hook, request, reply, err)
+		if ok and responseOrError ~= nil then
+			current = responseOrError :: Response
+		end
+	end
+
+	return current
+end
+
+local function createErrorResponse(
+	state: ExecutableApp,
+	hooks: HookChains,
+	request: RequestType,
+	err: unknown
+): Response
+	local errorReply = Reply.create()
+	local response = runErrorHandler(state._errorHandler or defaultErrorHandler, request, errorReply, err)
+
+	return applyOnErrorHooks(hooks.onError, request, err, response)
+end
+
+local function finalizeResponse(
+	state: ExecutableApp,
+	hooks: HookChains,
+	request: RequestType,
+	response: Response
+): Response
+	local ok, sentOrError = runOnSendHooks(hooks.onSend, request, response)
+	local finalResponse: Response
+
+	if ok then
+		finalResponse = sentOrError :: Response
+	else
+		finalResponse = createErrorResponse(state, hooks, request, sentOrError)
+	end
+
+	runOnResponseHooks(hooks.onResponse, request, finalResponse)
+
+	return finalResponse
+end
+
 function Executor.execute(app: App, source: RequestSource): Response
 	local state = (app :: unknown) :: ExecutableApp
+	Routing.compile(app)
+
+	local hooks = state._compiledHooks :: HookChains
 	local request = Request.create(source, state._options)
 	local reply = Reply.create()
 	local match = Routing.match(app, request.method, request.path)
+
+	local preHookGroups = {
+		hooks.onRequest,
+		hooks.preParsing,
+		hooks.preValidation,
+		hooks.preHandler,
+	}
+
+	for _, group in preHookGroups do
+		local ok, responseOrError = runShortCircuitHooks(group, request, reply)
+		if not ok then
+			return finalizeResponse(state, hooks, request, createErrorResponse(state, hooks, request, responseOrError))
+		end
+
+		if responseOrError ~= nil then
+			return finalizeResponse(state, hooks, request, responseOrError :: Response)
+		end
+	end
 
 	if match.kind == "found" then
 		request.params = match.params
 		local ok, responseOrError = runHandler(match.route.handler, request, reply)
 		if ok then
-			return responseOrError :: Response
+			return finalizeResponse(state, hooks, request, responseOrError :: Response)
 		end
 
-		local errorReply = Reply.create()
-		return runErrorHandler(state._errorHandler or defaultErrorHandler, request, errorReply, responseOrError)
+		return finalizeResponse(state, hooks, request, createErrorResponse(state, hooks, request, responseOrError))
 	end
 
 	local notFoundHandler = state._notFoundHandler or defaultNotFoundHandler
 	local ok, responseOrError = runHandler(notFoundHandler, request, reply)
 	if ok then
-		return responseOrError :: Response
+		return finalizeResponse(state, hooks, request, responseOrError :: Response)
 	end
 
-	local errorReply = Reply.create()
-	return runErrorHandler(state._errorHandler or defaultErrorHandler, request, errorReply, responseOrError)
+	return finalizeResponse(state, hooks, request, createErrorResponse(state, hooks, request, responseOrError))
 end
 
 return Executor

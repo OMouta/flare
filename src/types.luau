@@ -60,6 +60,8 @@ export type Handler = (request: Request, reply: Reply) -> HandlerResult
 
 export type ErrorHandler = (request: Request, reply: Reply, err: unknown) -> HandlerResult
 
+export type HookHandler = (request: Request, reply: Reply, value: unknown?) -> HandlerResult
+
 export type RouteHandlerOptions = {
 	schema: RouteSchema?,
 	config: { [string]: unknown }?,
@@ -85,7 +87,7 @@ export type App = {
 	head: (self: App, path: string, handler: Handler | RouteHandlerOptions) -> App,
 	options: (self: App, path: string, handler: Handler | RouteHandlerOptions) -> App,
 	route: (self: App, options: RouteOptions) -> App,
-	hook: (self: App, name: string, handler: Handler) -> App,
+	hook: (self: App, name: string, handler: HookHandler) -> App,
 	group: (self: App, prefix: string, callback: (scope: App) -> ()) -> App,
 	plugin: (self: App, plugin: Plugin, options: { [string]: unknown }?) -> App,
 	decorate: (self: App, name: string, value: unknown) -> App,
