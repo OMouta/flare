@@ -11,6 +11,7 @@ type Handler = Types.Handler
 type HandlerResult = Types.HandlerResult
 type HookChains = Hooks.HookChains
 type HookHandler = Types.HookHandler
+type RouteSchema = Types.RouteSchema
 type ReplyType = Types.Reply
 type RequestType = Types.Request
 type Response = Types.Response
@@ -34,6 +35,14 @@ end
 local function defaultErrorHandler(_request: RequestType, reply: ReplyType, _err: unknown): HandlerResult
 	return reply:code(500):send({
 		error = "Internal Server Error",
+	})
+end
+
+local function validationErrorResponse(reply: ReplyType, target: string, err: unknown): Response
+	return reply:code(400):send({
+		error = "Validation Error",
+		target = target,
+		message = tostring(err),
 	})
 end
 
@@ -217,6 +226,93 @@ local function combineHooks(global: HookChains, routeHooks): HookChains
 	}
 end
 
+local function contentTypeIncludes(request: RequestType, expected: string): boolean
+	local contentType = request.headers["content-type"]
+	if contentType == nil then
+		return false
+	end
+
+	return string.find(string.lower(contentType), expected, 1, true) ~= nil
+end
+
+local function validationBody(request: RequestType): unknown
+	if contentTypeIncludes(request, "application/json") then
+		return request:json()
+	elseif contentTypeIncludes(request, "application/x-www-form-urlencoded") then
+		return request:form()
+	end
+
+	return request:text()
+end
+
+local function applyValidator(
+	schema: RouteSchema,
+	request: RequestType,
+	target: string,
+	bodyInput: unknown?
+): (boolean, unknown)
+	local validator
+
+	if target == "params" then
+		validator = schema.params
+	elseif target == "query" then
+		validator = schema.query
+	elseif target == "headers" then
+		validator = schema.headers
+	else
+		validator = schema.body
+	end
+
+	if validator == nil then
+		return true, nil
+	end
+
+	local input: unknown
+	if target == "params" then
+		input = request.params
+	elseif target == "query" then
+		input = request.query
+	elseif target == "headers" then
+		input = request.headers
+	else
+		input = bodyInput
+	end
+
+	local ok, parsed = pcall(validator.parse, validator, input)
+	if not ok then
+		return false, parsed
+	end
+
+	if target == "params" then
+		request.params = parsed :: any
+	elseif target == "query" then
+		request.query = parsed :: any
+	elseif target == "headers" then
+		request.headers = parsed :: any
+	else
+		request.body = parsed
+	end
+
+	return true, nil
+end
+
+local function validateRequest(schema: RouteSchema?, request: RequestType): (boolean, Response?)
+	if schema == nil then
+		return true, nil
+	end
+
+	local bodyInput = if schema.body == nil then nil else validationBody(request)
+
+	for _, target in { "params", "query", "headers", "body" } do
+		local ok, err = applyValidator(schema, request, target, bodyInput)
+		if not ok then
+			return false, validationErrorResponse(Reply.create(), target, err)
+		end
+	end
+
+	return true, nil
+end
+
 function Executor.execute(app: App, source: RequestSource): Response
 	local state = (app :: unknown) :: ExecutableApp
 	Routing.compile(app)
@@ -227,14 +323,7 @@ function Executor.execute(app: App, source: RequestSource): Response
 	local match = Routing.match(app, request.method, request.path)
 	local hooks = if match.kind == "found" then combineHooks(globalHooks, match.route.hooks) else globalHooks
 
-	local preHookGroups = {
-		hooks.onRequest,
-		hooks.preParsing,
-		hooks.preValidation,
-		hooks.preHandler,
-	}
-
-	for _, group in preHookGroups do
+	for _, group in { hooks.onRequest, hooks.preParsing, hooks.preValidation } do
 		local ok, responseOrError = runShortCircuitHooks(group, request, reply)
 		if not ok then
 			return finalizeResponse(state, hooks, request, createErrorResponse(state, hooks, request, responseOrError))
@@ -247,6 +336,25 @@ function Executor.execute(app: App, source: RequestSource): Response
 
 	if match.kind == "found" then
 		request.params = match.params
+		local valid, validationResponse = validateRequest(match.route.schema, request)
+		if not valid then
+			return finalizeResponse(state, hooks, request, validationResponse :: Response)
+		end
+
+		local hooksOk, hookResponseOrError = runShortCircuitHooks(hooks.preHandler, request, reply)
+		if not hooksOk then
+			return finalizeResponse(
+				state,
+				hooks,
+				request,
+				createErrorResponse(state, hooks, request, hookResponseOrError)
+			)
+		end
+
+		if hookResponseOrError ~= nil then
+			return finalizeResponse(state, hooks, request, hookResponseOrError :: Response)
+		end
+
 		local ok, responseOrError = runHandler(match.route.handler, request, reply)
 		if ok then
 			return finalizeResponse(state, hooks, request, responseOrError :: Response)
